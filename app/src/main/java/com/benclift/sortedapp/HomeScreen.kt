@@ -191,9 +191,8 @@ fun SortedScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding(),
-            contentPadding = PaddingValues(bottom = 110.dp)
+            contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp)
         ) {
-            item(key = "clock") { ClockBlock() }
 
             // One-tap shortcut to the phone setting that makes the Home button open this app.
             if (!isDefaultHome) {
@@ -528,38 +527,6 @@ fun SortedScreen(
                 }) { Text("Remove") }
             },
             dismissButton = { TextButton(onClick = { removingWidget = null }) { Text("Cancel") } }
-        )
-    }
-}
-
-/** Big clock and date, drawn straight on the wallpaper. */
-@Composable
-fun ClockBlock() {
-    val context = LocalContext.current
-    var now by remember { mutableStateOf(LocalDateTime.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = LocalDateTime.now()
-            delay(5_000)
-        }
-    }
-    val pattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm"
-    val time = now.format(DateTimeFormatter.ofPattern(pattern))
-    val date = now.format(DateTimeFormatter.ofPattern("EEE d MMMM"))
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 40.dp, bottom = 12.dp)
-    ) {
-        Text(
-            text = time,
-            style = TextStyle(color = Color.White, fontSize = 76.sp, fontWeight = FontWeight.Medium, shadow = shadow)
-        )
-        Text(
-            text = date,
-            style = TextStyle(color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium, shadow = shadow)
         )
     }
 }
