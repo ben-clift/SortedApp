@@ -39,6 +39,33 @@ fun launchApp(context: Context, pkg: String) {
     }
 }
 
+/** Remembers which widgets are on the home page, in order. */
+class WidgetStore(context: Context) {
+    private val prefs = context.getSharedPreferences("widgets", Context.MODE_PRIVATE)
+
+    fun load(): List<Int> =
+        (prefs.getString("ids", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }
+
+    private fun save(ids: List<Int>) {
+        prefs.edit().putString("ids", ids.joinToString(",")).apply()
+    }
+
+    fun add(id: Int) = save(load() + id)
+
+    fun remove(id: Int) = save(load() - id)
+}
+
+/** Remembers which category boxes you collapsed. */
+class UiStore(context: Context) {
+    private val prefs = context.getSharedPreferences("ui", Context.MODE_PRIVATE)
+
+    fun collapsed(): Set<String> = prefs.getStringSet("collapsed", emptySet()) ?: emptySet()
+
+    fun setCollapsed(categories: Set<String>) {
+        prefs.edit().putStringSet("collapsed", categories).apply()
+    }
+}
+
 /** Remembers the categories you picked by hand. Stored on the phone only. */
 class OverrideStore(context: Context) {
     private val prefs = context.getSharedPreferences("category_overrides", Context.MODE_PRIVATE)
