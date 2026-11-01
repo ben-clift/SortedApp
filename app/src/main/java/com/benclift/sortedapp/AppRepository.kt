@@ -64,6 +64,14 @@ class UiStore(context: Context) {
     fun setCollapsed(categories: Set<String>) {
         prefs.edit().putStringSet("collapsed", categories).apply()
     }
+
+    /** Apps pinned to the home grid, in the order you added them (package names). */
+    fun pinned(): List<String> =
+        (prefs.getString("pinned", "") ?: "").split(",").filter { it.isNotBlank() }
+
+    fun setPinned(pkgs: List<String>) {
+        prefs.edit().putString("pinned", pkgs.joinToString(",")).apply()
+    }
 }
 
 /** Remembers the categories you picked by hand. Stored on the phone only. */
