@@ -452,6 +452,7 @@ fun SortedScreen(
         AppDrawer(
             apps = apps,
             iconSize = iconSize,
+            categoryOf = { Categorizer.categorize(it, overrides[it.pkg]) },
             onClose = { drawerOpen = false },
             onLaunch = { launchApp(context, it.pkg) },
             onMore = { moving = it }
@@ -710,23 +711,56 @@ fun FolderTile(
     }
 }
 
-/** Full list of every app, A to Z, with search. Opens with the keyboard ready. */
+/** Best guess at who made an app, from its package name (com.google.* is Google, and so on). */
+fun companyOf(app: AppItem): String {
+    val pkg = app.pkg.lowercase()
+    val known = listOf(
+        "com.google" to "Google", "com.android.chrome" to "Google", "com.android.vending" to "Google",
+        "com.samsung" to "Samsung", "com.sec." to "Samsung", "com.microsoft" to "Microsoft",
+        "com.amazon" to "Amazon", "in.amazon" to "Amazon", "com.facebook" to "Meta",
+        "com.instagram" to "Meta", "com.whatsapp" to "Meta", "uk.co.bbc" to "BBC", "bbc." to "BBC",
+        "com.openai" to "OpenAI", "com.anthropic" to "Anthropic", "com.github" to "GitHub"
+    )
+    known.firstOrNull { pkg.startsWith(it.first) }?.let { return it.second }
+    val parts = pkg.split(".")
+    val tlds = setOf("com", "org", "net", "io", "app", "uk", "co", "de", "fr", "me", "tv", "ai", "dev", "eu")
+    var i = 0
+    while (i < parts.size - 1 && parts[i] in tlds) i++
+    val name = parts.getOrNull(i) ?: parts.last()
+    return name.replaceFirstChar { it.uppercase() }
+}
+
+/** Full list of every app with search; group it A to Z, by category, or by company. Opens with the keyboard ready. */
 @Composable
 fun AppDrawer(
     apps: List<AppItem>,
     iconSize: Dp,
+    categoryOf: (AppItem) -> String,
     onClose: () -> Unit,
     onLaunch: (AppItem) -> Unit,
     onMore: (AppItem) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
+    var mode by remember { mutableStateOf("A-Z") }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     BackHandler(enabled = true) { onClose() }
 
-    val shown = remember(apps, query) {
+    // Each section is a heading plus its apps. A-Z is one section with no heading.
+    val sections = remember(apps, query, mode) {
         val base = if (query.isBlank()) apps else apps.filter { it.label.contains(query.trim(), ignoreCase = true) }
-        base.sortedBy { it.label.lowercase() }
+        val sorted = base.sortedBy { it.label.lowercase() }
+        when (mode) {
+            "Category" -> sorted.groupBy(categoryOf).toList()
+                .sortedBy { (name, _) -> Categories.order.indexOf(name).let { if (it < 0) 999 else it } }
+            "Company" -> {
+                val byCompany = sorted.groupBy { companyOf(it) }
+                val big = byCompany.filter { it.value.size >= 2 }.toList().sortedBy { it.first.lowercase() }
+                val rest = byCompany.filter { it.value.size < 2 }.values.flatten().sortedBy { it.label.lowercase() }
+                if (rest.isEmpty()) big else big + ("Other companies" to rest)
+            }
+            else -> listOf("" to sorted)
+        }
     }
 
     Column(
@@ -756,23 +790,55 @@ fun AppDrawer(
             singleLine = true,
             shape = RoundedCornerShape(28.dp)
         )
+        // How to group the list: A to Z, by category, or by company (all Google apps together, etc.)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            listOf("A-Z", "Category", "Company").forEach { name ->
+                val selected = mode == name
+                Text(
+                    text = name,
+                    color = if (selected) Color.Black else Color.White,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (selected) Color.White else Color.White.copy(alpha = 0.16f))
+                        .clickable { mode = name }
+                        .padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+        }
         LazyVerticalGrid(
             columns = GridCells.Adaptive(66.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 8.dp)
         ) {
-            items(shown, key = { it.pkg }) { app ->
-                AppTile(
-                    app = app,
-                    modifier = Modifier.fillMaxWidth(),
-                    iconSize = iconSize,
-                    onClick = {
-                        onClose()
-                        onLaunch(app)
-                    },
-                    onLongClick = { onMore(app) }
-                )
+            sections.forEach { (heading, list) ->
+                if (heading.isNotEmpty()) {
+                    item(key = "h-$heading", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            text = "$heading  (${list.size})",
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 6.dp, top = 14.dp, bottom = 4.dp)
+                        )
+                    }
+                }
+                items(list, key = { "$heading/${it.pkg}" }) { app ->
+                    AppTile(
+                        app = app,
+                        modifier = Modifier.fillMaxWidth(),
+                        iconSize = iconSize,
+                        onClick = {
+                            onClose()
+                            onLaunch(app)
+                        },
+                        onLongClick = { onMore(app) }
+                    )
+                }
             }
         }
     }
