@@ -137,6 +137,9 @@ fun SortedScreen(
     var moving by remember { mutableStateOf<AppItem?>(null) }
     var pickingWidget by remember { mutableStateOf(false) }
     var removingWidget by remember { mutableStateOf<Int?>(null) }
+    var settings by remember { mutableStateOf(uiStore.settings()) }
+    var showSettings by remember { mutableStateOf(false) }
+    var sortingOther by remember { mutableStateOf(false) }
 
     LaunchedEffect(refreshTick) {
         apps = withContext(Dispatchers.Default) { loadApps(context) }
@@ -150,6 +153,8 @@ fun SortedScreen(
             moving = null
             pickingWidget = false
             removingWidget = null
+            showSettings = false
+            sortingOther = false
             listState.animateScrollToItem(0)
         }
     }
@@ -170,7 +175,23 @@ fun SortedScreen(
         apps.groupBy { Categorizer.categorize(it, overrides[it.pkg]) }
             .mapValues { (_, list) -> list.sortedBy { it.label.lowercase() } }
     }
-    val folders = Categories.order.filter { grouped.containsKey(it) }
+    val folders = Categories.order.filter { grouped.containsKey(it) && it !in settings.hiddenFolders }
+    val iconSize = settings.iconSizeDp.dp
+    val favIconSize = (settings.iconSizeDp * 1.45f).dp
+
+    // Suggest a folder for an "Other" app from other apps by the same developer (same package prefix).
+    val genericVendors = setOf("com.google", "com.android", "com.samsung", "com.sec", "com.microsoft", "com.facebook")
+    val suggest: (AppItem) -> String? = { app ->
+        fun vendor(pkg: String) = pkg.split('.').take(2).joinToString(".")
+        val v = vendor(app.pkg)
+        if (v in genericVendors) null
+        else grouped.entries
+            .filter { it.key != Categories.OTHER }
+            .map { (category, list) -> category to list.count { vendor(it.pkg) == v } }
+            .filter { it.second > 0 }
+            .maxByOrNull { it.second }
+            ?.first
+    }
     val pinnedApps = remember(apps, pinned) {
         val byPkg = apps.associateBy { it.pkg }
         pinned.mapNotNull { byPkg[it] }
@@ -180,7 +201,7 @@ fun SortedScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.18f))
+            .background(Color.Black.copy(alpha = settings.dimPercent / 100f))
             .pointerInput(Unit) {
                 // Swipe up anywhere on the home page to open the full app list.
                 detectVerticalDragGestures { _, dragAmount -> if (dragAmount < -30f) drawerOpen = true }
@@ -238,11 +259,19 @@ fun SortedScreen(
 
             item(key = "widgets-header") {
                 Row(
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
                 ) {
+                    Text(
+                        text = "Settings",
+                        style = labelStyle.copy(fontSize = 12.sp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { showSettings = true }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -292,7 +321,7 @@ fun SortedScreen(
                                     AppTile(
                                         app = app,
                                         modifier = Modifier.weight(1f),
-                                        iconSize = FAV_ICON_SIZE,
+                                        iconSize = favIconSize,
                                         onClick = { launchApp(context, app.pkg) },
                                         onLongClick = { moving = app }
                                     )
@@ -320,18 +349,19 @@ fun SortedScreen(
                         .padding(horizontal = 12.dp, vertical = 12.dp)
                 ) {
                     // One folder per category, HOME_COLUMNS per row, each row spread across the full width.
-                    folders.chunked(HOME_COLUMNS).forEach { rowFolders ->
+                    folders.chunked(settings.columns).forEach { rowFolders ->
                         Row(modifier = Modifier.fillMaxWidth()) {
                             rowFolders.forEach { category ->
                                 FolderTile(
                                     title = category,
                                     apps = grouped[category].orEmpty(),
                                     modifier = Modifier.weight(1f),
+                                    iconSize = iconSize,
                                     onClick = { openFolder = category }
                                 )
                             }
                             // Keep the last row's tiles the same width as the others.
-                            repeat(HOME_COLUMNS - rowFolders.size) { Spacer(Modifier.weight(1f)) }
+                            repeat(settings.columns - rowFolders.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }
@@ -374,6 +404,7 @@ fun SortedScreen(
     if (drawerOpen) {
         AppDrawer(
             apps = apps,
+            iconSize = iconSize,
             onClose = { drawerOpen = false },
             onLaunch = { launchApp(context, it.pkg) },
             onMore = { moving = it }
@@ -400,6 +431,12 @@ fun SortedScreen(
                     fontSize = 15.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                 )
+                if (category == Categories.OTHER && list.isNotEmpty()) {
+                    TextButton(onClick = {
+                        openFolder = null
+                        sortingOther = true
+                    }) { Text("Sort these one by one") }
+                }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
                     modifier = Modifier.heightIn(max = 440.dp)
@@ -408,6 +445,7 @@ fun SortedScreen(
                         AppTile(
                             app = app,
                             modifier = Modifier.fillMaxWidth(),
+                            iconSize = iconSize,
                             onClick = {
                                 openFolder = null
                                 launchApp(context, app.pkg)
@@ -529,6 +567,30 @@ fun SortedScreen(
             dismissButton = { TextButton(onClick = { removingWidget = null }) { Text("Cancel") } }
         )
     }
+
+    // ---------------------------------------------------------------- Settings and "Other" clean-up
+    if (showSettings) {
+        SettingsDialog(
+            settings = settings,
+            onChange = {
+                settings = it
+                uiStore.saveSettings(it)
+            },
+            onClose = { showSettings = false }
+        )
+    }
+
+    if (sortingOther) {
+        SortOtherDialog(
+            apps = grouped[Categories.OTHER].orEmpty(),
+            suggest = suggest,
+            onAssign = { app, category ->
+                store.set(app.pkg, category)
+                overrides = store.all()
+            },
+            onClose = { sortingOther = false }
+        )
+    }
 }
 
 /** One app: small icon with a one-line label. */
@@ -565,6 +627,7 @@ fun FolderTile(
     title: String,
     apps: List<AppItem>,
     modifier: Modifier,
+    iconSize: Dp,
     onClick: () -> Unit
 ) {
     Column(
@@ -577,7 +640,7 @@ fun FolderTile(
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(ICON_SIZE)
+                .size(iconSize)
                 .clip(RoundedCornerShape(11.dp))
                 .background(Color.Black.copy(alpha = 0.45f))
         ) {
@@ -585,7 +648,7 @@ fun FolderTile(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 preview.chunked(2).forEach { rowApps ->
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        rowApps.forEach { Image(bitmap = it.icon, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        rowApps.forEach { Image(bitmap = it.icon, contentDescription = null, modifier = Modifier.size(((iconSize.value - 8f) / 2f).dp)) }
                     }
                 }
             }
@@ -604,6 +667,7 @@ fun FolderTile(
 @Composable
 fun AppDrawer(
     apps: List<AppItem>,
+    iconSize: Dp,
     onClose: () -> Unit,
     onLaunch: (AppItem) -> Unit,
     onMore: (AppItem) -> Unit
@@ -655,6 +719,7 @@ fun AppDrawer(
                 AppTile(
                     app = app,
                     modifier = Modifier.fillMaxWidth(),
+                    iconSize = iconSize,
                     onClick = {
                         onClose()
                         onLaunch(app)

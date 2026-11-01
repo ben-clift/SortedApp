@@ -73,6 +73,14 @@ class WidgetStore(context: Context) {
     }
 }
 
+/** Look-and-feel options you can change in Settings. */
+data class HomeSettings(
+    val iconSizeDp: Int = 40,
+    val columns: Int = 5,
+    val dimPercent: Int = 18,
+    val hiddenFolders: Set<String> = emptySet()
+)
+
 /** Remembers which category boxes you collapsed. */
 class UiStore(context: Context) {
     private val prefs = context.getSharedPreferences("ui", Context.MODE_PRIVATE)
@@ -89,6 +97,22 @@ class UiStore(context: Context) {
 
     fun setPinned(pkgs: List<String>) {
         prefs.edit().putString("pinned", pkgs.joinToString(",")).apply()
+    }
+
+    fun settings(): HomeSettings = HomeSettings(
+        iconSizeDp = prefs.getInt("iconSize", 40),
+        columns = prefs.getInt("columns", 5),
+        dimPercent = prefs.getInt("dim", 18),
+        hiddenFolders = HashSet(prefs.getStringSet("hiddenFolders", emptySet()) ?: emptySet())
+    )
+
+    fun saveSettings(settings: HomeSettings) {
+        prefs.edit()
+            .putInt("iconSize", settings.iconSizeDp)
+            .putInt("columns", settings.columns)
+            .putInt("dim", settings.dimPercent)
+            .putStringSet("hiddenFolders", HashSet(settings.hiddenFolders))
+            .apply()
     }
 }
 
