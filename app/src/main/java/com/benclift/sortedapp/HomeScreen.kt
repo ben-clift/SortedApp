@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -175,8 +176,6 @@ fun SortedScreen(
         pinned.mapNotNull { byPkg[it] }
     }
 
-    val cellWidth = ((LocalConfiguration.current.screenWidthDp - 24) / HOME_COLUMNS).dp
-
     // ---------------------------------------------------------------- Home page
     Box(
         modifier = Modifier
@@ -275,7 +274,6 @@ fun SortedScreen(
             // ---- Favourites: a few apps with bigger icons ----
             item(key = "favourites") {
                 if (pinnedApps.isNotEmpty()) {
-                    val favCell = ((LocalConfiguration.current.screenWidthDp - 40) / FAV_COLUMNS).dp
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -289,15 +287,18 @@ fun SortedScreen(
                             style = labelStyle.copy(fontSize = 12.sp, textAlign = TextAlign.Start),
                             modifier = Modifier.padding(start = 10.dp, top = 2.dp, bottom = 2.dp)
                         )
-                        FlowRow(modifier = Modifier.fillMaxWidth()) {
-                            pinnedApps.forEach { app ->
-                                AppTile(
-                                    app = app,
-                                    modifier = Modifier.width(favCell),
-                                    iconSize = FAV_ICON_SIZE,
-                                    onClick = { launchApp(context, app.pkg) },
-                                    onLongClick = { moving = app }
-                                )
+                        pinnedApps.chunked(FAV_COLUMNS).forEach { rowApps ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                rowApps.forEach { app ->
+                                    AppTile(
+                                        app = app,
+                                        modifier = Modifier.weight(1f),
+                                        iconSize = FAV_ICON_SIZE,
+                                        onClick = { launchApp(context, app.pkg) },
+                                        onLongClick = { moving = app }
+                                    )
+                                }
+                                repeat(FAV_COLUMNS - rowApps.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                     }
@@ -314,19 +315,25 @@ fun SortedScreen(
             }
 
             item(key = "grid") {
-                FlowRow(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 12.dp)
                 ) {
-                    // One folder per category.
-                    folders.forEach { category ->
-                        FolderTile(
-                            title = category,
-                            apps = grouped[category].orEmpty(),
-                            modifier = Modifier.width(cellWidth),
-                            onClick = { openFolder = category }
-                        )
+                    // One folder per category, HOME_COLUMNS per row, each row spread across the full width.
+                    folders.chunked(HOME_COLUMNS).forEach { rowFolders ->
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            rowFolders.forEach { category ->
+                                FolderTile(
+                                    title = category,
+                                    apps = grouped[category].orEmpty(),
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { openFolder = category }
+                                )
+                            }
+                            // Keep the last row's tiles the same width as the others.
+                            repeat(HOME_COLUMNS - rowFolders.size) { Spacer(Modifier.weight(1f)) }
+                        }
                     }
                 }
             }
