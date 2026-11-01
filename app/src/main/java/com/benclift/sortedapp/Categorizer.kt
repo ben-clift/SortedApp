@@ -8,7 +8,7 @@ object Categories {
     const val OTHER = "Other"
 
     val order = listOf(
-        "Games", "Social", "Communication", "Music & Audio", "Video", "Photos",
+        "Games", "Betting", "Social", "Communication", "Music & Audio", "Video", "Photos",
         "News", "Maps & Travel", "AI", "Finance", "Shopping", "Food & Drink",
         "Sport", "Health", "Work", "Productivity", "Tools", OTHER
     )
@@ -19,16 +19,38 @@ object Categories {
  *
  * Order of precedence:
  *  1. Your own manual choice (long-press an app to move it)
- *  2. The category the app developer declared to Android
- *  3. Keyword rules below, matched against the app name + package name
- *  4. "Other"
+ *  2. "Priority" keyword rules (Betting, Health): these beat everything below, because
+ *     developers often tag betting apps as Games/Sports and health apps as Productivity
+ *  3. The category the app developer declared to Android, except "Productivity", which
+ *     is so over-used by developers that it only counts if no keyword rule matches
+ *  4. Keyword rules below, matched against the app name + package name
+ *  5. "Other"
  *
  * To fix a miscategorised app for everyone, add a keyword to the right list in [rules].
  * Rules are checked top to bottom and the first match wins, so put specific ones first.
  */
 object Categorizer {
 
+    /** Categories whose keyword rules win even over the developer's own category tag. */
+    private val priorityCategories = setOf("Betting", "Health")
+
+    /** Words stripped before matching, so they can't trigger a rule by accident. */
+    private val ignoredWords = listOf("passport")
+
     private val rules: List<Pair<String, List<String>>> = listOf(
+        "Betting" to listOf(
+            "betfair", "boylesports", "paddypower", "paddy power", "skybet", "sky bet",
+            "bet365", "williamhill", "william hill", "ladbrokes", "coral", "betfred",
+            "betway", "betvictor", "unibet", "bwin", "888", "kwiff", "fanduel",
+            "draftkings", "geesports", "sportsbook", "betting", "betslip", "oddschecker",
+            "bookmaker", "casino", "poker", "bingo", "tipster", "livescorebet", "spreadex",
+            "quinnbet", "talksportbet", "virginbet", "betmgm", "sportingbet", "betano",
+            "10bet", "mrq", "grosvenor"
+        ),
+        "Health" to listOf(
+            "health", "covid", "nhs", "fitness", "fitbit", "sleep", "meditat", "calm",
+            "headspace", "pharmacy", "doctor", "gym", "zoe", "vaccin"
+        ),
         "AI" to listOf(
             "chatgpt", "openai", "claude", "anthropic", "gemini", "copilot", "chaton",
             "perplexity", "grok", "deepseek", "mistral"
@@ -39,11 +61,6 @@ object Categorizer {
             "hsbc", "santander", "halifax", "clearpay", "klarna", "clearscore",
             "finance", "trading212", "experian"
         ),
-        "Sport" to listOf(
-            "football", "soccer", "cricket", "nfl", "nba", "premier", "palace", "chargers",
-            "fifa", "sofascore", "fotmob", "espn", "sport", "golf", "tennis", "rugby",
-            "strava", "formula1"
-        ),
         "Food & Drink" to listOf(
             "costa", "starbucks", "mcdonald", "deliveroo", "ubereats", "just eat", "justeat",
             "greggs", "domino", "pizza", "kfc", "nando", "burger", "coffee", "recipe",
@@ -52,16 +69,17 @@ object Categorizer {
         "Shopping" to listOf(
             "amazon", "ebay", "tesco", "sainsbury", "asda", "waitrose", "morrisons", "aldi",
             "lidl", "argos", "shop", "vinted", "depop", "etsy", "temu", "shein", "asos",
-            "currys", "ikea"
+            "currys", "ikea", "jdsports", "jd sports"
+        ),
+        "Sport" to listOf(
+            "football", "soccer", "cricket", "nfl", "nba", "premier", "palace", "chargers",
+            "fifa", "sofascore", "fotmob", "espn", "sport", "golf", "tennis", "rugby",
+            "strava", "formula1", "flashscore", "ecb", "utilita", "supporters"
         ),
         "Maps & Travel" to listOf(
             "uber", "bolt", "trainline", "nationalrail", "tfl", "citymapper", "booking",
             "airbnb", "expedia", "skyscanner", "kiwi", "easyjet", "ryanair", "flight",
             "hotel", "travel", "airline"
-        ),
-        "Health" to listOf(
-            "health", "fitness", "fitbit", "sleep", "meditat", "calm", "headspace", "nhs",
-            "pharmacy", "doctor", "gym"
         ),
         "Games" to listOf("chess", "wordle", "puzzle", "solitaire", "sudoku", "game"),
         "Video" to listOf(
@@ -98,20 +116,37 @@ object Categorizer {
         ApplicationInfo.CATEGORY_IMAGE -> "Photos"
         ApplicationInfo.CATEGORY_NEWS -> "News"
         ApplicationInfo.CATEGORY_MAPS -> "Maps & Travel"
-        ApplicationInfo.CATEGORY_PRODUCTIVITY -> "Productivity"
         ApplicationInfo.CATEGORY_ACCESSIBILITY -> "Tools"
+        // Productivity is deliberately NOT mapped here: it is handled as a last resort below.
         else -> null // CATEGORY_UNDEFINED: the developer didn't say, use keywords
+    }
+
+    private fun matchRules(haystack: String, onlyPriority: Boolean): String? {
+        for ((category, keywords) in rules) {
+            if (onlyPriority && category !in priorityCategories) continue
+            if (keywords.any { haystack.contains(it) }) return category
+        }
+        return null
     }
 
     fun categorize(app: AppItem, override: String?): String {
         if (override != null) return override
 
+        var haystack = (app.label + " " + app.pkg).lowercase()
+        ignoredWords.forEach { haystack = haystack.replace(it, "") }
+
+        // 2. Betting and Health beat the developer's own tag.
+        matchRules(haystack, onlyPriority = true)?.let { return it }
+
+        // 3. The developer's declared category (except the over-used Productivity tag).
         fromSystemCategory(app.systemCategory)?.let { return it }
 
-        val haystack = (app.label + " " + app.pkg).lowercase()
-        for ((category, keywords) in rules) {
-            if (keywords.any { haystack.contains(it) }) return category
-        }
+        // 4. Keyword rules.
+        matchRules(haystack, onlyPriority = false)?.let { return it }
+
+        // 5. Last resort: a Productivity tag is better than nothing.
+        if (app.systemCategory == ApplicationInfo.CATEGORY_PRODUCTIVITY) return "Productivity"
+
         return Categories.OTHER
     }
 }
