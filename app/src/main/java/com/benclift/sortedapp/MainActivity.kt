@@ -82,6 +82,9 @@ class MainActivity : ComponentActivity() {
     // Bumped whenever the app list might have changed, which triggers a reload.
     private val refreshTick = mutableIntStateOf(0)
 
+    // Bumped when the Home button is pressed while this app is already on screen.
+    private val homeTick = mutableIntStateOf(0)
+
     private lateinit var widgetHost: AppWidgetHost
     private lateinit var widgetManager: AppWidgetManager
     private lateinit var widgetStore: WidgetStore
@@ -119,6 +122,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 SortedScreen(
                     refreshTick = refreshTick.intValue,
+                    homeTick = homeTick.intValue,
                     widgetIds = widgetIds,
                     widgetHost = widgetHost,
                     widgetManager = widgetManager,
@@ -126,6 +130,14 @@ class MainActivity : ComponentActivity() {
                     onRemoveWidget = ::removeWidget
                 )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Home button pressed: go back to the top of the home page and close anything open.
+        if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) {
+            homeTick.intValue++
         }
     }
 

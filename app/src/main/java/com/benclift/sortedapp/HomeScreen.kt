@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -100,6 +102,7 @@ private val labelStyle = TextStyle(
 @Composable
 fun SortedScreen(
     refreshTick: Int,
+    homeTick: Int,
     widgetIds: List<Int>,
     widgetHost: AppWidgetHost,
     widgetManager: AppWidgetManager,
@@ -110,6 +113,7 @@ fun SortedScreen(
     val store = remember { OverrideStore(context) }
     val uiStore = remember { UiStore(context) }
     val widgetStore = remember { WidgetStore(context) }
+    val listState = rememberLazyListState()
 
     var widgetHeights by remember { mutableStateOf(widgetStore.heights()) }
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
@@ -123,6 +127,25 @@ fun SortedScreen(
 
     LaunchedEffect(refreshTick) {
         apps = withContext(Dispatchers.Default) { loadApps(context) }
+    }
+
+    // Pressing Home while already here: close everything and scroll back to the top.
+    LaunchedEffect(homeTick) {
+        if (homeTick > 0) {
+            drawerOpen = false
+            openFolder = null
+            moving = null
+            pickingWidget = false
+            removingWidget = null
+            listState.animateScrollToItem(0)
+        }
+    }
+
+    // Is this app currently the phone's default home app?
+    val isDefaultHome = remember(refreshTick) {
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        context.packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo?.packageName == context.packageName
     }
 
     // This is a home screen: the back button never closes it, it only closes things on top.
@@ -153,12 +176,43 @@ fun SortedScreen(
             }
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding(),
             contentPadding = PaddingValues(bottom = 110.dp)
         ) {
             item(key = "clock") { ClockBlock() }
+
+            // One-tap shortcut to the phone setting that makes the Home button open this app.
+            if (!isDefaultHome) {
+                item(key = "make-default") {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Tap to make SortedApp your Home button app",
+                            style = labelStyle.copy(fontSize = 13.sp, shadow = null),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.Black.copy(alpha = 0.55f))
+                                .clickable {
+                                    val intent = Intent(Settings.ACTION_HOME_SETTINGS)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (_: Exception) {
+                                        context.startActivity(
+                                            Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        )
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            }
 
             item(key = "widgets-header") {
                 Row(
