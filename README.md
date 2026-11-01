@@ -21,10 +21,9 @@ Each release has two copies of the APK: `SortedApp-1.0.N.apk` (version in the fi
 (fixed name for the link above). Download either on your phone and open it. Android will ask you to allow installs from your
 browser the first time. The installed version shows under Settings > Apps > SortedApp.
 
-**Installing over an older version:** Android only allows this if both were signed with the same key.
-Add the repo secrets `KEYSTORE_B64` (a base64-encoded keystore with alias `sorted`) and `KEYSTORE_PASSWORD`
-and every build is signed with it. Without them each build gets a fresh debug key, so uninstall the old
-version first.
+**Installing over an older version:** every build is signed with the same key (`app/sortedapp-key.p12`), so a new
+version installs straight over the old one and keeps your widgets, favourites and folder choices. (Builds before
+1.0.15 used a different key, so uninstall those once first.)
 
 To use it as your home screen: Settings > Apps > Default apps > Home app > SortedApp.
 

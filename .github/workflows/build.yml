@@ -26,22 +26,6 @@ jobs:
       - name: Accept Android SDK licences
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
-      # Optional: if the KEYSTORE_B64 and KEYSTORE_PASSWORD repo secrets exist, every build is
-      # signed with the same key, which lets Android install a new version over the old one.
-      - name: Load signing key (if configured)
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: |
-          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/sorted.jks"
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/sorted.jks" >> "$GITHUB_ENV"
-            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "Signing with the stored key"
-          else
-            echo "No signing key configured; using the default debug key"
-          fi
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.10.2

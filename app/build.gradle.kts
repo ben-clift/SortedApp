@@ -8,9 +8,6 @@ plugins {
 // gets its own version: 1.0.N. Builds on your own machine fall back to 1.
 val buildNumber = (project.findProperty("buildNumber") as String?)?.toIntOrNull() ?: 1
 
-// Optional stable signing key, supplied by CI. Without it Gradle uses its default debug key.
-val keystorePath: String? = System.getenv("KEYSTORE_FILE")
-
 android {
     namespace = "com.benclift.sortedapp"
     compileSdk = 35
@@ -23,23 +20,25 @@ android {
         versionName = "1.0.$buildNumber"
     }
 
+    // One fixed signing key for every build, so Android lets a new version install over the old one.
+    // The key is deliberately kept in the repo (this is a personal sideloaded app, not a Play Store app).
     signingConfigs {
-        if (keystorePath != null) {
-            create("ci") {
-                storeFile = file(keystorePath)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = "sorted"
-                keyPassword = System.getenv("KEYSTORE_PASSWORD")
-            }
+        create("shared") {
+            storeFile = file("sortedapp-key.p12")
+            storeType = "pkcs12"
+            storePassword = "sortedapp"
+            keyAlias = "sorted"
+            keyPassword = "sortedapp"
         }
     }
 
     buildTypes {
         debug {
-            if (keystorePath != null) signingConfig = signingConfigs.getByName("ci")
+            signingConfig = signingConfigs.getByName("shared")
         }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 
