@@ -217,7 +217,7 @@ fun SortedScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding(),
-            contentPadding = PaddingValues(top = 8.dp, bottom = if (nowPlaying != null) 190.dp else 110.dp)
+            contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp)
         ) {
 
             // One-tap shortcut to the phone setting that makes the Home button open this app.
@@ -259,6 +259,16 @@ fun SortedScreen(
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
+                }
+            }
+
+            // Now-playing bar at the very top of the page.
+            nowPlaying?.let { np ->
+                item(key = "now-playing") {
+                    NowPlayingBar(
+                        np = np,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
                 }
             }
 
@@ -422,10 +432,6 @@ fun SortedScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 14.dp)
         ) {
-            nowPlaying?.let { np ->
-                NowPlayingBar(np = np, modifier = Modifier.padding(bottom = 10.dp))
-            }
-
             // "Search apps" bar: opens the full app list with the keyboard ready.
             Box(
                 contentAlignment = Alignment.Center,
