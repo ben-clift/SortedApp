@@ -20,6 +20,17 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.SortedApp">
 
+        <!-- Lets the home page show and control whatever is playing (needs Notification access) -->
+        <service
+            android:name=".MediaListenerService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

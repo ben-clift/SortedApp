@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
+import androidx.core.app.NotificationManagerCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -166,6 +167,10 @@ fun SortedScreen(
             ?.activityInfo?.packageName == context.packageName
     }
 
+    // What is playing right now (needs Notification access; null until granted or when idle).
+    val nowPlaying by rememberNowPlaying(refreshTick)
+    val hasMediaAccess = remember(refreshTick) { hasNotificationAccess(context) }
+
     // This is a home screen: the back button never closes it, it only closes things on top.
     BackHandler(enabled = true) {
         if (openFolder != null) openFolder = null else drawerOpen = false
@@ -212,7 +217,7 @@ fun SortedScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding(),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp)
+            contentPadding = PaddingValues(top = 8.dp, bottom = if (nowPlaying != null) 190.dp else 110.dp)
         ) {
 
             // One-tap shortcut to the phone setting that makes the Home button open this app.
@@ -250,6 +255,33 @@ fun SortedScreen(
                                             )
                                         }
                                     }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            // One-tap shortcut to grant the access needed to show what's playing.
+            if (!hasMediaAccess) {
+                item(key = "enable-media") {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                    ) {
+                        Text(
+                            text = "Tap to show what's playing here",
+                            style = labelStyle.copy(fontSize = 13.sp, shadow = null),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.Black.copy(alpha = 0.55f))
+                                .clickable {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
                                 }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         )
@@ -383,20 +415,29 @@ fun SortedScreen(
             }
         }
 
-        // "Smart search" bar: opens the full app list with the keyboard ready.
-        Box(
-            contentAlignment = Alignment.Center,
+        // Bottom area: the now-playing bar (when something is playing) above the search bar.
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 14.dp)
-                .fillMaxWidth()
-                .height(50.dp)
-                .clip(RoundedCornerShape(25.dp))
-                .background(Color.Black.copy(alpha = 0.55f))
-                .clickable { drawerOpen = true }
         ) {
-            Text("Search apps", style = labelStyle.copy(fontSize = 15.sp, shadow = null), color = Color.White)
+            nowPlaying?.let { np ->
+                NowPlayingBar(np = np, modifier = Modifier.padding(bottom = 10.dp))
+            }
+
+            // "Search apps" bar: opens the full app list with the keyboard ready.
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .clip(RoundedCornerShape(25.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable { drawerOpen = true }
+            ) {
+                Text("Search apps", style = labelStyle.copy(fontSize = 15.sp, shadow = null), color = Color.White)
+            }
         }
     }
 
