@@ -72,6 +72,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -88,6 +89,10 @@ private val ICON_SIZE = 40.dp
 
 /** How many tiles fit across the home grid. */
 private const val HOME_COLUMNS = 5
+
+/** Favourites get bigger icons and fewer columns. */
+private val FAV_ICON_SIZE = 58.dp
+private const val FAV_COLUMNS = 4
 
 private val shadow = Shadow(Color.Black.copy(alpha = 0.75f), Offset(0f, 2f), 6f)
 
@@ -248,21 +253,54 @@ fun SortedScreen(
                 )
             }
 
+            // ---- Favourites: a few apps with bigger icons ----
+            item(key = "favourites") {
+                if (pinnedApps.isNotEmpty()) {
+                    val favCell = ((LocalConfiguration.current.screenWidthDp - 40) / FAV_COLUMNS).dp
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.Black.copy(alpha = 0.35f))
+                            .padding(horizontal = 4.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Favourites",
+                            style = labelStyle.copy(fontSize = 12.sp, textAlign = TextAlign.Start),
+                            modifier = Modifier.padding(start = 10.dp, top = 2.dp, bottom = 2.dp)
+                        )
+                        FlowRow(modifier = Modifier.fillMaxWidth()) {
+                            pinnedApps.forEach { app ->
+                                AppTile(
+                                    app = app,
+                                    modifier = Modifier.width(favCell),
+                                    iconSize = FAV_ICON_SIZE,
+                                    onClick = { launchApp(context, app.pkg) },
+                                    onLongClick = { moving = app }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Favourites: long-press any app and choose Add to favourites",
+                        style = labelStyle.copy(fontSize = 11.sp, shadow = null),
+                        color = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
             item(key = "grid") {
                 FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 12.dp)
                 ) {
-                    // Pinned apps first, then one folder per category.
-                    pinnedApps.forEach { app ->
-                        AppTile(
-                            app = app,
-                            modifier = Modifier.width(cellWidth),
-                            onClick = { launchApp(context, app.pkg) },
-                            onLongClick = { moving = app }
-                        )
-                    }
+                    // One folder per category.
                     folders.forEach { category ->
                         FolderTile(
                             title = category,
@@ -272,6 +310,21 @@ fun SortedScreen(
                         )
                     }
                 }
+            }
+
+            item(key = "version") {
+                val versionName = remember {
+                    runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+                        .getOrNull().orEmpty()
+                }
+                Text(
+                    text = "SortedApp v$versionName",
+                    style = labelStyle.copy(fontSize = 9.sp, shadow = null),
+                    color = Color.White.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                )
             }
         }
 
@@ -355,7 +408,7 @@ fun SortedScreen(
                             pinned = if (isPinned) pinned - app.pkg else pinned + app.pkg
                             uiStore.setPinned(pinned)
                             moving = null
-                        }) { Text(if (isPinned) "Remove from home" else "Add to home") }
+                        }) { Text(if (isPinned) "Remove from favourites" else "Add to favourites") }
                     }
                     item {
                         TextButton(onClick = {
@@ -492,7 +545,8 @@ fun AppTile(
     app: AppItem,
     modifier: Modifier,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    iconSize: Dp = ICON_SIZE
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -501,10 +555,10 @@ fun AppTile(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(vertical = 6.dp)
     ) {
-        Image(bitmap = app.icon, contentDescription = app.label, modifier = Modifier.size(ICON_SIZE))
+        Image(bitmap = app.icon, contentDescription = app.label, modifier = Modifier.size(iconSize))
         Text(
             text = app.label,
-            style = labelStyle,
+            style = if (iconSize > 48.dp) labelStyle.copy(fontSize = 12.sp) else labelStyle,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 3.dp, start = 2.dp, end = 2.dp)

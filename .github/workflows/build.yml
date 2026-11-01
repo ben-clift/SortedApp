@@ -55,13 +55,16 @@ jobs:
           name: SortedApp-${{ env.VERSION }}
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      # One release per build (v1.0.N). The newest one is what the "latest" download link serves.
+      # One release per build (v1.0.N). Each release carries two copies of the APK:
+      #   SortedApp-1.0.N.apk  - has the version in the file name, so downloads are easy to tell apart
+      #   SortedApp.apk        - fixed name, so the "latest" download link always works
       - name: Publish release v${{ env.VERSION }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cp app/build/outputs/apk/debug/app-debug.apk "SortedApp-$VERSION.apk"
           cp app/build/outputs/apk/debug/app-debug.apk SortedApp.apk
-          gh release create "v$VERSION" SortedApp.apk \
-            --title "SortedApp $VERSION" \
-            --notes "Build $VERSION from commit ${GITHUB_SHA::7}. Download SortedApp.apk and install it on your phone." \
+          gh release create "v$VERSION" "SortedApp-$VERSION.apk" SortedApp.apk \
+            --title "SortedApp v$VERSION" \
+            --notes "Version $VERSION (build ${{ github.run_number }}, commit ${GITHUB_SHA::7}). Download SortedApp-$VERSION.apk and install it on your phone." \
             --latest

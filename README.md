@@ -17,7 +17,8 @@ Every push to `main` builds the app with GitHub Actions and publishes a numbered
 (1.0.N, where N is the build number) to the [Releases](../../releases) page. The newest build is always at
 https://github.com/ben-clift/SortedApp/releases/latest/download/SortedApp.apk
 
-Download `SortedApp.apk` on your phone and open it. Android will ask you to allow installs from your
+Each release has two copies of the APK: `SortedApp-1.0.N.apk` (version in the file name) and `SortedApp.apk`
+(fixed name for the link above). Download either on your phone and open it. Android will ask you to allow installs from your
 browser the first time. The installed version shows under Settings > Apps > SortedApp.
 
 **Installing over an older version:** Android only allows this if both were signed with the same key.
