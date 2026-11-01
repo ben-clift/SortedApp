@@ -147,22 +147,71 @@ fun rememberNowPlaying(refreshKey: Int): State<NowPlaying?> {
     return state
 }
 
-/** A compact bar: artwork, title, and previous / play-pause / next. */
+/** Where playback is right now, in milliseconds (accounts for time passed since the last update). */
+private fun currentPosition(c: MediaController): Long {
+    val st = c.playbackState ?: return 0L
+    if (st.state != PlaybackState.STATE_PLAYING) return st.position
+    val elapsed = android.os.SystemClock.elapsedRealtime() - st.lastPositionUpdateTime
+    return st.position + (elapsed * st.playbackSpeed).toLong()
+}
+
+private fun hasAction(c: MediaController, flag: Long) = ((c.playbackState?.actions ?: 0L) and flag) != 0L
+
+/** Jump forwards or backwards. Falls back to rewind()/fastForward() for apps that don't allow seeking. */
+private fun skipBy(c: MediaController, deltaMs: Long) {
+    runCatching {
+        if (hasAction(c, PlaybackState.ACTION_SEEK_TO)) {
+            c.transportControls.seekTo((currentPosition(c) + deltaMs).coerceAtLeast(0L))
+        } else if (deltaMs > 0) {
+            c.transportControls.fastForward()
+        } else {
+            c.transportControls.rewind()
+        }
+    }
+}
+
+private fun customActionLike(c: MediaController, word: String): String? =
+    c.playbackState?.customActions?.firstOrNull {
+        it.action.contains(word, ignoreCase = true) || it.name.toString().contains(word, ignoreCase = true)
+    }?.action
+
+/** Back to the start of the programme. */
+private fun goToStart(c: MediaController) {
+    runCatching {
+        val custom = customActionLike(c, "start")
+        if (custom != null) c.transportControls.sendCustomAction(custom, null)
+        else c.transportControls.seekTo(0L)
+    }
+}
+
+/** Jump to the live edge of a radio stream. */
+private fun goLive(c: MediaController) {
+    runCatching {
+        val custom = customActionLike(c, "live")
+        val duration = c.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+        when {
+            custom != null -> c.transportControls.sendCustomAction(custom, null)
+            duration > 0 -> c.transportControls.seekTo(duration)
+            else -> c.transportControls.fastForward()
+        }
+    }
+}
+
+/** A now-playing card: artwork and title on top, then start / back 20s / play-pause / forward 20s / live. */
 @Composable
 fun NowPlayingBar(np: NowPlaying, modifier: Modifier = Modifier) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(Color.Black.copy(alpha = 0.62f))
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         // Tapping the artwork or title opens the app that is playing.
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .weight(1f)
+                .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .clickable { runCatching { np.controller.sessionActivity?.send() } }
         ) {
@@ -181,7 +230,7 @@ fun NowPlayingBar(np: NowPlaying, modifier: Modifier = Modifier) {
                     )
                 }
             }
-            Column(modifier = Modifier.padding(start = 10.dp, end = 6.dp)) {
+            Column(modifier = Modifier.padding(start = 10.dp)) {
                 Text(
                     text = np.title,
                     color = Color.White,
@@ -202,22 +251,74 @@ fun NowPlayingBar(np: NowPlaying, modifier: Modifier = Modifier) {
             }
         }
 
-        TransportButton(kind = TransportKind.PREVIOUS, size = 36.dp) {
-            runCatching { np.controller.transportControls.skipToPrevious() }
-        }
-        TransportButton(
-            kind = if (np.playing) TransportKind.PAUSE else TransportKind.PLAY,
-            size = 44.dp,
-            filled = true
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
         ) {
-            runCatching {
-                if (np.playing) np.controller.transportControls.pause()
-                else np.controller.transportControls.play()
+            TextControl("START") { goToStart(np.controller) }
+            SkipControl(forward = false) { skipBy(np.controller, -20_000L) }
+            TransportButton(
+                kind = if (np.playing) TransportKind.PAUSE else TransportKind.PLAY,
+                size = 48.dp,
+                filled = true
+            ) {
+                runCatching {
+                    if (np.playing) np.controller.transportControls.pause()
+                    else np.controller.transportControls.play()
+                }
             }
+            SkipControl(forward = true) { skipBy(np.controller, 20_000L) }
+            TextControl("LIVE") { goLive(np.controller) }
         }
-        TransportButton(kind = TransportKind.NEXT, size = 36.dp) {
-            runCatching { np.controller.transportControls.skipToNext() }
+    }
+}
+
+@Composable
+private fun TextControl(label: String, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(width = 56.dp, height = 40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+    ) {
+        Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** A circular arrow with "20" inside: jump back or forward 20 seconds. */
+@Composable
+private fun SkipControl(forward: Boolean, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable { onClick() }
+    ) {
+        Canvas(modifier = Modifier.size(30.dp)) {
+            val w = this.size.width
+            val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.08f)
+            val start = if (forward) -60f else 240f
+            val sweep = if (forward) 290f else -290f
+            drawArc(Color.White, start, sweep, false, style = stroke)
+            // Arrow head near the top, pointing along the direction of travel.
+            val tipX = if (forward) w * 0.58f else w * 0.42f
+            val dir = if (forward) 1f else -1f
+            drawPath(
+                Path().apply {
+                    moveTo(tipX + dir * w * 0.14f, w * 0.02f)
+                    lineTo(tipX - dir * w * 0.04f, w * 0.20f)
+                    lineTo(tipX - dir * w * 0.04f, -w * 0.16f + w * 0.02f)
+                    close()
+                },
+                Color.White
+            )
         }
+        Text("20", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
