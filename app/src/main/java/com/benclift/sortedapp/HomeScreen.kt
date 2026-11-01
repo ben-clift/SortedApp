@@ -1,15 +1,19 @@
 package com.benclift.sortedapp
 
+import android.app.role.RoleManager
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -119,6 +123,9 @@ fun SortedScreen(
     val uiStore = remember { UiStore(context) }
     val widgetStore = remember { WidgetStore(context) }
     val listState = rememberLazyListState()
+    val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        // Nothing to do: the pill hides itself when the app resumes and is the default home.
+    }
 
     var widgetHeights by remember { mutableStateOf(widgetStore.heights()) }
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
@@ -203,14 +210,26 @@ fun SortedScreen(
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(Color.Black.copy(alpha = 0.55f))
                                 .clickable {
-                                    val intent = Intent(Settings.ACTION_HOME_SETTINGS)
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    try {
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {
-                                        context.startActivity(
-                                            Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        )
+                                    // Best option: Android's own "Set as default home app?" prompt.
+                                    val roleManager = if (Build.VERSION.SDK_INT >= 29) {
+                                        context.getSystemService(RoleManager::class.java)
+                                    } else null
+                                    val canAsk = roleManager != null &&
+                                        roleManager.isRoleAvailable(RoleManager.ROLE_HOME) &&
+                                        !roleManager.isRoleHeld(RoleManager.ROLE_HOME)
+                                    if (canAsk && roleManager != null) {
+                                        roleLauncher.launch(roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME))
+                                    } else {
+                                        // Fallback: open the phone's Home app setting.
+                                        val intent = Intent(Settings.ACTION_HOME_SETTINGS)
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        try {
+                                            context.startActivity(intent)
+                                        } catch (_: Exception) {
+                                            context.startActivity(
+                                                Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        }
                                     }
                                 }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
