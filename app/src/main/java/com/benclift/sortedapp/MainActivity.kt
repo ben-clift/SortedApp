@@ -387,7 +387,13 @@ fun SortedScreen(
             val pm = context.packageManager
             widgetManager.installedProviders
                 .filter { it.widgetCategory and AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN != 0 }
-                .map { Triple(pm.getApplicationLabel(it.providerInfo.applicationInfo).toString(), it.loadLabel(pm), it) }
+                .map { info ->
+                    val pkg = info.provider.packageName
+                    val appName = runCatching {
+                        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                    }.getOrDefault(pkg)
+                    Triple(appName, info.loadLabel(pm), info)
+                }
                 .sortedWith(compareBy({ it.first.lowercase() }, { it.second.lowercase() }))
         }
         AlertDialog(
