@@ -11,6 +11,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VERSION: 1.0.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,26 +26,42 @@ jobs:
       - name: Accept Android SDK licences
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
+      # Optional: if the KEYSTORE_B64 and KEYSTORE_PASSWORD repo secrets exist, every build is
+      # signed with the same key, which lets Android install a new version over the old one.
+      - name: Load signing key (if configured)
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/sorted.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/sorted.jks" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "Signing with the stored key"
+          else
+            echo "No signing key configured; using the default debug key"
+          fi
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.10.2
 
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon --stacktrace -PbuildNumber=${{ github.run_number }}
 
       - name: Keep a copy as a build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SortedApp-debug-apk
+          name: SortedApp-${{ env.VERSION }}
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      # Publishes the APK to a Release so you can download it straight on your phone.
-      - name: Publish APK to the "latest" release
+      # One release per build (v1.0.N). The newest one is what the "latest" download link serves.
+      - name: Publish release v${{ env.VERSION }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk SortedApp.apk
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest SortedApp.apk \
-            --title "Latest build" \
-            --notes "Debug build from commit ${GITHUB_SHA::7}. Download SortedApp.apk and install it on your phone."
+          gh release create "v$VERSION" SortedApp.apk \
+            --title "SortedApp $VERSION" \
+            --notes "Build $VERSION from commit ${GITHUB_SHA::7}. Download SortedApp.apk and install it on your phone." \
+            --latest
