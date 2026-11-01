@@ -109,7 +109,9 @@ fun SortedScreen(
     val context = LocalContext.current
     val store = remember { OverrideStore(context) }
     val uiStore = remember { UiStore(context) }
+    val widgetStore = remember { WidgetStore(context) }
 
+    var widgetHeights by remember { mutableStateOf(widgetStore.heights()) }
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
     var overrides by remember { mutableStateOf(store.all()) }
     var pinned by remember { mutableStateOf(uiStore.pinned()) }
@@ -179,7 +181,17 @@ fun SortedScreen(
             }
 
             items(widgetIds, key = { "widget-$it" }) { id ->
-                WidgetBox(id = id, host = widgetHost, manager = widgetManager, onRemove = { removingWidget = id })
+                WidgetBox(
+                    id = id,
+                    host = widgetHost,
+                    manager = widgetManager,
+                    savedHeightDp = widgetHeights[id],
+                    onResize = { dp ->
+                        widgetStore.setHeight(id, dp)
+                        widgetHeights = widgetStore.heights()
+                    },
+                    onRemove = { removingWidget = id }
+                )
             }
 
             item(key = "grid") {
@@ -553,18 +565,32 @@ fun AppDrawer(
     }
 }
 
-/** A hosted widget with a small remove button in the corner. */
+/**
+ * A hosted widget. Its starting height is generous so the whole widget is visible; use the
+ * small + and - buttons in its corner to make it taller or shorter (remembered), or x to remove.
+ */
 @Composable
 fun WidgetBox(
     id: Int,
     host: AppWidgetHost,
     manager: AppWidgetManager,
+    savedHeightDp: Int?,
+    onResize: (Int) -> Unit,
     onRemove: () -> Unit
 ) {
     val info = remember(id) { manager.getAppWidgetInfo(id) } ?: return
     val density = LocalDensity.current
     val widthDp = LocalConfiguration.current.screenWidthDp - 24
-    val heightDp = with(density) { info.minHeight.toDp().value }.coerceAtLeast(70f).toInt()
+
+    // Start taller than the widget's bare minimum, which often crops its contents.
+    val defaultHeightDp = remember(id) {
+        val minDp = with(density) { info.minHeight.toDp().value }
+        val cells = if (android.os.Build.VERSION.SDK_INT >= 31 && info.targetCellHeight > 0) {
+            info.targetCellHeight * 74f
+        } else 0f
+        maxOf(minDp, cells, 120f).toInt()
+    }
+    val heightDp = (savedHeightDp ?: defaultHeightDp).coerceIn(60, 600)
 
     Box(
         modifier = Modifier
@@ -575,29 +601,41 @@ fun WidgetBox(
     ) {
         AndroidView(
             factory = { ctx ->
-                host.createView(ctx, id, info).apply {
-                    setAppWidget(id, info)
-                    updateAppWidgetSize(Bundle(), widthDp, heightDp, widthDp, heightDp)
-                }
+                host.createView(ctx, id, info).apply { setAppWidget(id, info) }
+            },
+            update = { view ->
+                // Tell the widget how much room it has so it lays itself out to fit.
+                view.updateAppWidgetSize(Bundle(), widthDp, heightDp, widthDp, heightDp)
             },
             modifier = Modifier.fillMaxSize()
         )
-        Box(
-            contentAlignment = Alignment.Center,
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(6.dp)
-                .size(24.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.55f))
-                .clickable { onRemove() }
         ) {
-            Icon(
-                Icons.Default.Close,
-                contentDescription = "Remove widget",
-                tint = Color.White,
-                modifier = Modifier.size(14.dp)
-            )
+            WidgetButton(onClick = { onResize((heightDp - 40).coerceAtLeast(60)) }) {
+                Text("\u2013", color = Color.White, fontSize = 16.sp)
+            }
+            WidgetButton(onClick = { onResize((heightDp + 40).coerceAtMost(600)) }) {
+                Icon(Icons.Default.Add, contentDescription = "Taller", tint = Color.White, modifier = Modifier.size(14.dp))
+            }
+            WidgetButton(onClick = onRemove) {
+                Icon(Icons.Default.Close, contentDescription = "Remove widget", tint = Color.White, modifier = Modifier.size(14.dp))
+            }
         }
     }
+}
+
+@Composable
+private fun WidgetButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(26.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.6f))
+            .clickable { onClick() }
+    ) { content() }
 }

@@ -52,7 +52,25 @@ class WidgetStore(context: Context) {
 
     fun add(id: Int) = save(load() + id)
 
-    fun remove(id: Int) = save(load() - id)
+    fun remove(id: Int) {
+        save(load() - id)
+        saveHeights(heights() - id)
+    }
+
+    /** Heights (in dp) you set for each widget, keyed by widget id. */
+    fun heights(): Map<Int, Int> =
+        (prefs.getString("heights", "") ?: "").split(",").mapNotNull { entry ->
+            val parts = entry.split(":")
+            val id = parts.getOrNull(0)?.toIntOrNull()
+            val dp = parts.getOrNull(1)?.toIntOrNull()
+            if (id != null && dp != null) id to dp else null
+        }.toMap()
+
+    fun setHeight(id: Int, dp: Int) = saveHeights(heights() + (id to dp))
+
+    private fun saveHeights(map: Map<Int, Int>) {
+        prefs.edit().putString("heights", map.entries.joinToString(",") { "${it.key}:${it.value}" }).apply()
+    }
 }
 
 /** Remembers which category boxes you collapsed. */
