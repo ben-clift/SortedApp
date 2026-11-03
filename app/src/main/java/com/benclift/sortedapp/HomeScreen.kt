@@ -71,6 +71,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -869,6 +870,10 @@ fun WidgetBox(
         maxOf(minDp, cells, 120f).toInt()
     }
     val heightDp = (savedHeightDp ?: defaultHeightDp).coerceIn(60, 600)
+    val context = LocalContext.current
+    // Bumped to rebuild the widget's view when you swipe right to refresh it.
+    var refreshCount by remember(id) { mutableStateOf(0) }
+    val swipeDistance = with(density) { 90.dp.toPx() }
 
     Box(
         modifier = Modifier
@@ -876,7 +881,50 @@ fun WidgetBox(
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .height(heightDp.dp)
             .clip(RoundedCornerShape(16.dp))
+            // Swipe left to remove, swipe right to refresh. Watches the touch first (without
+            // blocking taps) and only takes over once it is clearly a sideways swipe.
+            .pointerInput(id) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val down = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.pressed } ?: continue
+                        var dx = 0f
+                        var dy = 0f
+                        var horizontal = false
+                        var last = down.position
+                        while (true) {
+                            val ev = awaitPointerEvent(PointerEventPass.Initial)
+                            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!ch.pressed) {
+                                if (horizontal) {
+                                    if (dx <= -swipeDistance) onRemove()
+                                    else if (dx >= swipeDistance) {
+                                        refreshCount++
+                                        runCatching {
+                                            context.sendBroadcast(
+                                                android.content.Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE)
+                                                    .setComponent(info.provider)
+                                                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(id))
+                                            )
+                                        }
+                                        android.widget.Toast.makeText(context, "Refreshing widget", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                    ch.consume()
+                                }
+                                break
+                            }
+                            dx += ch.position.x - last.x
+                            dy += ch.position.y - last.y
+                            last = ch.position
+                            if (!horizontal && kotlin.math.abs(dx) > viewConfiguration.touchSlop * 2 &&
+                                kotlin.math.abs(dx) > kotlin.math.abs(dy) * 2f
+                            ) horizontal = true
+                            if (horizontal) ch.consume()
+                        }
+                    }
+                }
+            }
     ) {
+        androidx.compose.runtime.key(refreshCount) {
         AndroidView(
             factory = { ctx ->
                 host.createView(ctx, id, info).apply { setAppWidget(id, info) }
@@ -887,6 +935,7 @@ fun WidgetBox(
             },
             modifier = Modifier.fillMaxSize()
         )
+        }
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
