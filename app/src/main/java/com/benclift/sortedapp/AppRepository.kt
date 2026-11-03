@@ -108,6 +108,13 @@ class UiStore(context: Context) {
         prefs.edit().putBoolean("editMode", on).apply()
     }
 
+    /** Whether the folder boxes are tucked away behind a single line on the home page. */
+    fun foldersHidden(): Boolean = prefs.getBoolean("foldersHidden", false)
+
+    fun setFoldersHidden(hidden: Boolean) {
+        prefs.edit().putBoolean("foldersHidden", hidden).apply()
+    }
+
     fun settings(): HomeSettings = HomeSettings(
         iconSizeDp = prefs.getInt("iconSize", 40),
         columns = prefs.getInt("columns", 5),

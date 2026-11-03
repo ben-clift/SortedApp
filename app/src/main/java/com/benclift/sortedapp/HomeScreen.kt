@@ -141,6 +141,7 @@ fun SortedScreen(
     var overrides by remember { mutableStateOf(store.all()) }
     var pinned by remember { mutableStateOf(uiStore.pinned()) }
     var drawerOpen by remember { mutableStateOf(false) }
+    var foldersHidden by remember { mutableStateOf(uiStore.foldersHidden()) }
     var openFolder by remember { mutableStateOf<String?>(null) }
     var moving by remember { mutableStateOf<AppItem?>(null) }
     var pickingWidget by remember { mutableStateOf(false) }
@@ -476,26 +477,50 @@ fun SortedScreen(
                 }
             }
 
-            item(key = "grid") {
-                Column(
+            item(key = "grid-toggle") {
+                // A thin line: tap it to hide or show the folder boxes below it.
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 12.dp)
+                        .clickable {
+                            foldersHidden = !foldersHidden
+                            uiStore.setFoldersHidden(foldersHidden)
+                        }
+                        .padding(horizontal = 12.dp, vertical = 14.dp)
                 ) {
-                    // One folder per category, HOME_COLUMNS per row, each row spread across the full width.
-                    folders.chunked(settings.columns).forEach { rowFolders ->
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            rowFolders.forEach { category ->
-                                FolderTile(
-                                    title = category,
-                                    apps = grouped[category].orEmpty(),
-                                    modifier = Modifier.weight(1f),
-                                    iconSize = iconSize,
-                                    onClick = { openFolder = category }
-                                )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color.White.copy(alpha = if (foldersHidden) 0.7f else 0.25f))
+                    )
+                }
+            }
+
+            if (!foldersHidden) {
+            item(key = "grid") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        // One folder per category, HOME_COLUMNS per row, each row spread across the full width.
+                        folders.chunked(settings.columns).forEach { rowFolders ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                rowFolders.forEach { category ->
+                                    FolderTile(
+                                        title = category,
+                                        apps = grouped[category].orEmpty(),
+                                        modifier = Modifier.weight(1f),
+                                        iconSize = iconSize,
+                                        onClick = { openFolder = category }
+                                    )
+                                }
+                                // Keep the last row's tiles the same width as the others.
+                                repeat(settings.columns - rowFolders.size) { Spacer(Modifier.weight(1f)) }
                             }
-                            // Keep the last row's tiles the same width as the others.
-                            repeat(settings.columns - rowFolders.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
                 }
