@@ -197,23 +197,44 @@ private fun goLive(c: MediaController) {
     }
 }
 
+private val DJ_APPS = setOf("com.benclift.setflow", "com.benclift.beatdeck.test")
+
+/**
+ * Opens the app that is playing. For Ben's DJ apps it asks for The Booth (extra "open" = "booth");
+ * every other app just opens normally.
+ */
+private fun openPlayingApp(context: android.content.Context, c: MediaController) {
+    val pkg = c.packageName
+    if (pkg in DJ_APPS) {
+        val launch = context.packageManager.getLaunchIntentForPackage(pkg)
+        if (launch != null) {
+            launch.putExtra("open", "booth").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { context.startActivity(launch) }.isSuccess) return
+        }
+    }
+    val sent = runCatching { c.sessionActivity?.send() }.isSuccess && c.sessionActivity != null
+    if (!sent) launchApp(context, pkg)
+}
+
 /** A now-playing card: artwork and title on top, then start / back 20s / play-pause / forward 20s / live. */
 @Composable
 fun NowPlayingBar(np: NowPlaying, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(Color.Black.copy(alpha = 0.62f))
+            .clickable { openPlayingApp(context, np.controller) }
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        // Tapping the artwork or title opens the app that is playing.
+        // Tapping the card background, artwork or title opens the app that is playing.
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .clickable { runCatching { np.controller.sessionActivity?.send() } }
+                .clickable { openPlayingApp(context, np.controller) }
         ) {
             Box(
                 modifier = Modifier
