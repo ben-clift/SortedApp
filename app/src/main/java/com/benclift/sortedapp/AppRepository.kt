@@ -101,6 +101,13 @@ class UiStore(context: Context) {
         prefs.edit().putString("pinned", pkgs.joinToString(",")).apply()
     }
 
+    /** Whether the on-screen controls (Settings, Add widget, widget buttons) are showing. */
+    fun editMode(): Boolean = prefs.getBoolean("editMode", false)
+
+    fun setEditMode(on: Boolean) {
+        prefs.edit().putBoolean("editMode", on).apply()
+    }
+
     fun settings(): HomeSettings = HomeSettings(
         iconSizeDp = prefs.getInt("iconSize", 40),
         columns = prefs.getInt("columns", 5),

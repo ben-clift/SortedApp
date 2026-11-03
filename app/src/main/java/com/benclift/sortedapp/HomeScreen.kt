@@ -147,6 +147,7 @@ fun SortedScreen(
     var removingWidget by remember { mutableStateOf<Int?>(null) }
     var settings by remember { mutableStateOf(uiStore.settings()) }
     var showSettings by remember { mutableStateOf(false) }
+    var editMode by remember { mutableStateOf(uiStore.editMode()) }
     var sortingOther by remember { mutableStateOf(false) }
 
     LaunchedEffect(refreshTick) {
@@ -309,29 +310,46 @@ fun SortedScreen(
 
             item(key = "widgets-header") {
                 Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
                 ) {
-                    Text(
-                        text = "Settings",
-                        style = labelStyle.copy(fontSize = 12.sp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { showSettings = true }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { pickingWidget = true }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
-                        Text("Add widget", style = labelStyle.copy(fontSize = 12.sp), modifier = Modifier.padding(start = 4.dp))
+                    if (editMode) {
+                        Text(
+                            text = "Settings",
+                            style = labelStyle.copy(fontSize = 12.sp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { showSettings = true }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { pickingWidget = true }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Text("Add widget", style = labelStyle.copy(fontSize = 12.sp), modifier = Modifier.padding(start = 4.dp))
+                        }
                     }
+                    Spacer(Modifier.weight(1f))
+                    // On/off switch for the on-screen controls; off keeps the home page clean.
+                    Text(
+                        text = if (editMode) "Done" else "Edit",
+                        style = labelStyle.copy(fontSize = 12.sp, shadow = null),
+                        color = Color.White.copy(alpha = if (editMode) 1f else 0.55f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.Black.copy(alpha = if (editMode) 0.55f else 0.25f))
+                            .clickable {
+                                editMode = !editMode
+                                uiStore.setEditMode(editMode)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
                 }
             }
 
@@ -341,6 +359,7 @@ fun SortedScreen(
                     host = widgetHost,
                     manager = widgetManager,
                     savedHeightDp = widgetHeights[id],
+                    showControls = editMode,
                     onResize = { dp ->
                         widgetStore.setHeight(id, dp)
                         widgetHeights = widgetStore.heights()
@@ -509,13 +528,14 @@ fun SortedScreen(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .clip(RoundedCornerShape(25.dp))
-                    .background(Color.Black.copy(alpha = 0.55f))
+                    .align(Alignment.CenterHorizontally)
+                    .width(120.dp)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color.Black.copy(alpha = 0.45f))
                     .clickable { drawerOpen = true }
             ) {
-                Text("Search apps", style = labelStyle.copy(fontSize = 15.sp, shadow = null), color = Color.White)
+                Icon(Icons.Default.Search, contentDescription = "Search apps", tint = Color.White, modifier = Modifier.size(22.dp))
             }
         }
     }
@@ -927,6 +947,7 @@ fun WidgetBox(
     host: AppWidgetHost,
     manager: AppWidgetManager,
     savedHeightDp: Int?,
+    showControls: Boolean,
     onResize: (Int) -> Unit,
     onRemove: () -> Unit
 ) {
@@ -1009,7 +1030,7 @@ fun WidgetBox(
             modifier = Modifier.fillMaxSize()
         )
         }
-        Row(
+        if (showControls) Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier
                 .align(Alignment.TopEnd)
