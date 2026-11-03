@@ -137,7 +137,35 @@ fun SortedScreen(
     }
 
     var widgetHeights by remember { mutableStateOf(widgetStore.heights()) }
-    var apps by remember { mutableStateOf(emptyList<AppItem>()) }
+    val customStore = remember { CustomStore(context) }
+    var rawApps by remember { mutableStateOf(emptyList<AppItem>()) }
+    var customLabels by remember { mutableStateOf(customStore.labels()) }
+    var iconVersion by remember { mutableStateOf(0) }
+    // The apps as shown: your own names and icons laid over what the system says.
+    val apps = remember(rawApps, customLabels, iconVersion) {
+        val iconPkgs = customStore.iconPkgs()
+        rawApps.map { a ->
+            val name = customLabels[a.pkg]?.takeIf { it.isNotBlank() }
+            val pic = if (a.pkg in iconPkgs) customStore.loadIcon(a.pkg) else null
+            if (name == null && pic == null) a
+            else a.copy(
+                label = name ?: a.label,
+                icon = pic ?: a.icon,
+                customLabel = name != null,
+                customIcon = pic != null
+            )
+        }
+    }
+    var renaming by remember { mutableStateOf<AppItem?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var iconTarget by remember { mutableStateOf<String?>(null) }
+    val iconPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val pkg = iconTarget
+        iconTarget = null
+        if (uri != null && pkg != null) {
+            if (customStore.saveIcon(pkg, uri)) iconVersion++
+        }
+    }
     var overrides by remember { mutableStateOf(store.all()) }
     var pinned by remember { mutableStateOf(uiStore.pinned()) }
     var drawerOpen by remember { mutableStateOf(false) }
@@ -152,7 +180,7 @@ fun SortedScreen(
     var sortingOther by remember { mutableStateOf(false) }
 
     LaunchedEffect(refreshTick) {
-        apps = withContext(Dispatchers.Default) { loadApps(context) }
+        rawApps = withContext(Dispatchers.Default) { loadApps(context) }
     }
 
     // Pressing Home while already here: close everything and scroll back to the top.
@@ -641,6 +669,38 @@ fun SortedScreen(
                     }
                     item {
                         TextButton(onClick = {
+                            renameText = app.label
+                            renaming = app
+                            moving = null
+                        }) { Text("Rename") }
+                    }
+                    if (app.customLabel) {
+                        item {
+                            TextButton(onClick = {
+                                customStore.clearLabel(app.pkg)
+                                customLabels = customStore.labels()
+                                moving = null
+                            }) { Text("Reset name") }
+                        }
+                    }
+                    item {
+                        TextButton(onClick = {
+                            iconTarget = app.pkg
+                            moving = null
+                            iconPicker.launch("image/*")
+                        }) { Text("Choose your own icon") }
+                    }
+                    if (app.customIcon) {
+                        item {
+                            TextButton(onClick = {
+                                customStore.clearIcon(app.pkg)
+                                iconVersion++
+                                moving = null
+                            }) { Text("Reset icon") }
+                        }
+                    }
+                    item {
+                        TextButton(onClick = {
                             val intent = Intent(
                                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                                 Uri.parse("package:${app.pkg}")
@@ -675,6 +735,30 @@ fun SortedScreen(
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { moving = null }) { Text("Cancel") } }
+        )
+    }
+
+    // ---------------------------------------------------------------- Rename dialog
+    renaming?.let { app ->
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Rename app") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (renameText.isBlank()) customStore.clearLabel(app.pkg)
+                    else customStore.setLabel(app.pkg, renameText)
+                    customLabels = customStore.labels()
+                    renaming = null
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } }
         )
     }
 

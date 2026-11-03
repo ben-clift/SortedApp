@@ -132,7 +132,7 @@ object Categorizer {
     fun categorize(app: AppItem, override: String?): String {
         if (override != null) return override
 
-        var haystack = (app.label + " " + app.pkg).lowercase()
+        var haystack = (app.originalLabel + " " + app.pkg).lowercase()
         ignoredWords.forEach { haystack = haystack.replace(it, "") }
 
         // 2. Betting and Health beat the developer's own tag.

@@ -2,6 +2,10 @@ package com.benclift.sortedapp
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import java.io.File
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
@@ -11,7 +15,11 @@ data class AppItem(
     val label: String,
     val pkg: String,
     val systemCategory: Int,
-    val icon: ImageBitmap
+    val icon: ImageBitmap,
+    /** The name the system gave the app; used for sorting into folders even if you rename it. */
+    val originalLabel: String = label,
+    val customLabel: Boolean = false,
+    val customIcon: Boolean = false
 )
 
 /** Reads every launchable app from the system. Call off the main thread. */
@@ -149,5 +157,54 @@ class OverrideStore(context: Context) {
 
     fun clear(pkg: String) {
         prefs.edit().remove(pkg).apply()
+    }
+}
+
+
+/** Remembers app names and icons you changed by hand. Stored on the phone only. */
+class CustomStore(private val context: Context) {
+    private val prefs = context.getSharedPreferences("custom_labels", Context.MODE_PRIVATE)
+    private val dir = File(context.filesDir, "custom_icons").also { it.mkdirs() }
+
+    private fun file(pkg: String) = File(dir, "$pkg.png")
+
+    fun labels(): Map<String, String> =
+        prefs.all.mapNotNull { (key, value) -> (value as? String)?.let { key to it } }.toMap()
+
+    fun setLabel(pkg: String, label: String) {
+        prefs.edit().putString(pkg, label.trim()).apply()
+    }
+
+    fun clearLabel(pkg: String) {
+        prefs.edit().remove(pkg).apply()
+    }
+
+    fun iconPkgs(): Set<String> =
+        dir.listFiles()?.map { it.name.removeSuffix(".png") }?.toSet().orEmpty()
+
+    fun loadIcon(pkg: String): ImageBitmap? {
+        val f = file(pkg)
+        if (!f.exists()) return null
+        return runCatching { BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() }.getOrNull()
+    }
+
+    /** Reads the picture you chose, shrinks it to a square icon and keeps a private copy. */
+    fun saveIcon(pkg: String, uri: Uri): Boolean = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= 512 && bounds.outHeight / (sample * 2) >= 512) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val src = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+            ?: return false
+        val side = minOf(src.width, src.height)
+        val square = Bitmap.createBitmap(src, (src.width - side) / 2, (src.height - side) / 2, side, side)
+        val out = Bitmap.createScaledBitmap(square, 256, 256, true)
+        file(pkg).outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        true
+    }.getOrDefault(false)
+
+    fun clearIcon(pkg: String) {
+        file(pkg).delete()
     }
 }
