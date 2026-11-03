@@ -77,6 +77,8 @@ class WidgetStore(context: Context) {
 data class HomeSettings(
     val iconSizeDp: Int = 40,
     val columns: Int = 5,
+    val favIconSizeDp: Int = 40,
+    val favColumns: Int = 6,
     val dimPercent: Int = 18,
     val hiddenFolders: Set<String> = emptySet()
 )
@@ -102,6 +104,8 @@ class UiStore(context: Context) {
     fun settings(): HomeSettings = HomeSettings(
         iconSizeDp = prefs.getInt("iconSize", 40),
         columns = prefs.getInt("columns", 5),
+        favIconSizeDp = prefs.getInt("favIconSize", 40),
+        favColumns = prefs.getInt("favColumns", 6),
         dimPercent = prefs.getInt("dim", 18),
         hiddenFolders = HashSet(prefs.getStringSet("hiddenFolders", emptySet()) ?: emptySet())
     )
@@ -110,6 +114,8 @@ class UiStore(context: Context) {
         prefs.edit()
             .putInt("iconSize", settings.iconSizeDp)
             .putInt("columns", settings.columns)
+            .putInt("favIconSize", settings.favIconSizeDp)
+            .putInt("favColumns", settings.favColumns)
             .putInt("dim", settings.dimPercent)
             .putStringSet("hiddenFolders", HashSet(settings.hiddenFolders))
             .apply()

@@ -96,9 +96,7 @@ private val ICON_SIZE = 40.dp
 /** How many tiles fit across the home grid. */
 private const val HOME_COLUMNS = 5
 
-/** Favourites get bigger icons and fewer columns. */
-private val FAV_ICON_SIZE = 58.dp
-private const val FAV_COLUMNS = 4
+/** Favourites icon size and columns are set in Settings (compact by default). */
 
 private val shadow = Shadow(Color.Black.copy(alpha = 0.75f), Offset(0f, 2f), 6f)
 
@@ -182,7 +180,8 @@ fun SortedScreen(
     }
     val folders = Categories.order.filter { grouped.containsKey(it) && it !in settings.hiddenFolders }
     val iconSize = settings.iconSizeDp.dp
-    val favIconSize = (settings.iconSizeDp * 1.45f).dp
+    val favIconSize = settings.favIconSizeDp.dp
+    val favColumns = settings.favColumns
 
     // Suggest a folder for an "Other" app from other apps by the same developer (same package prefix).
     val genericVendors = setOf("com.google", "com.android", "com.samsung", "com.sec", "com.microsoft", "com.facebook")
@@ -357,7 +356,7 @@ fun SortedScreen(
                             style = labelStyle.copy(fontSize = 12.sp, textAlign = TextAlign.Start),
                             modifier = Modifier.padding(start = 10.dp, top = 2.dp, bottom = 2.dp)
                         )
-                        pinnedApps.chunked(FAV_COLUMNS).forEach { rowApps ->
+                        pinnedApps.chunked(favColumns).forEach { rowApps ->
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 rowApps.forEach { app ->
                                     AppTile(
@@ -368,7 +367,7 @@ fun SortedScreen(
                                         onLongClick = { moving = app }
                                     )
                                 }
-                                repeat(FAV_COLUMNS - rowApps.size) { Spacer(Modifier.weight(1f)) }
+                                repeat(favColumns - rowApps.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                     }

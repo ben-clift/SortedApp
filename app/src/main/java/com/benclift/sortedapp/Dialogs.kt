@@ -79,6 +79,25 @@ fun SettingsDialog(
                 }
                 item {
                     SettingSlider(
+                        title = "Favourites icon size",
+                        valueLabel = "${settings.favIconSizeDp}",
+                        value = settings.favIconSizeDp.toFloat(),
+                        range = 28f..64f,
+                        onValue = { onChange(settings.copy(favIconSizeDp = it.roundToInt())) }
+                    )
+                }
+                item {
+                    SettingSlider(
+                        title = "Favourites per row",
+                        valueLabel = "${settings.favColumns}",
+                        value = settings.favColumns.toFloat(),
+                        range = 3f..8f,
+                        steps = 4,
+                        onValue = { onChange(settings.copy(favColumns = it.roundToInt())) }
+                    )
+                }
+                item {
+                    SettingSlider(
                         title = "Wallpaper dimming",
                         valueLabel = "${settings.dimPercent}%",
                         value = settings.dimPercent.toFloat(),
