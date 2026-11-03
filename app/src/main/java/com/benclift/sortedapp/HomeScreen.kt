@@ -71,6 +71,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.zIndex
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -344,6 +352,12 @@ fun SortedScreen(
             // ---- Favourites: a few apps with bigger icons ----
             item(key = "favourites") {
                 if (pinnedApps.isNotEmpty()) {
+                    // Drag-to-reorder: a quick touch-and-drag moves a favourite; holding still opens the menu.
+                    var dragPkg by remember { mutableStateOf<String?>(null) }
+                    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+                    var dragStart by remember { mutableStateOf(Offset.Zero) }
+                    val tileBounds = remember { mutableMapOf<String, Rect>() }
+                    val latestPinned by rememberUpdatedState(pinned)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -360,9 +374,68 @@ fun SortedScreen(
                         pinnedApps.chunked(favColumns).forEach { rowApps ->
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 rowApps.forEach { app ->
+                                    val lifted = dragPkg == app.pkg
                                     AppTile(
                                         app = app,
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .zIndex(if (lifted) 1f else 0f)
+                                            .onGloballyPositioned {
+                                                tileBounds[app.pkg] = Rect(it.positionInRoot(), it.size.toSize())
+                                            }
+                                            .graphicsLayer {
+                                                if (lifted) {
+                                                    translationX = dragOffset.x
+                                                    translationY = dragOffset.y
+                                                    scaleX = 1.15f
+                                                    scaleY = 1.15f
+                                                    alpha = 0.9f
+                                                }
+                                            }
+                                            .pointerInput(app.pkg) {
+                                                awaitPointerEventScope {
+                                                    while (true) {
+                                                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                                        var total = Offset.Zero
+                                                        var dragging = false
+                                                        while (true) {
+                                                            val ev = awaitPointerEvent(PointerEventPass.Initial)
+                                                            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                                            if (!ch.pressed) {
+                                                                if (dragging) {
+                                                                    ch.consume()
+                                                                    val finger = dragStart + dragOffset
+                                                                    val target = tileBounds.entries
+                                                                        .firstOrNull { it.key != app.pkg && it.value.contains(finger) }?.key
+                                                                    val list = latestPinned.toMutableList()
+                                                                    val from = list.indexOf(app.pkg)
+                                                                    val to = if (target != null) list.indexOf(target) else -1
+                                                                    if (from >= 0 && to >= 0 && from != to) {
+                                                                        list.removeAt(from)
+                                                                        list.add(to, app.pkg)
+                                                                        pinned = list
+                                                                        uiStore.setPinned(list)
+                                                                    }
+                                                                    dragPkg = null
+                                                                    dragOffset = Offset.Zero
+                                                                }
+                                                                break
+                                                            }
+                                                            val d = ch.position - ch.previousPosition
+                                                            total += d
+                                                            if (!dragging && total.getDistance() > viewConfiguration.touchSlop) {
+                                                                dragging = true
+                                                                dragPkg = app.pkg
+                                                                dragOffset = total
+                                                                dragStart = tileBounds[app.pkg]?.center ?: Offset.Zero
+                                                            } else if (dragging) {
+                                                                dragOffset += d
+                                                            }
+                                                            if (dragging) ch.consume()
+                                                        }
+                                                    }
+                                                }
+                                            },
                                         iconSize = favIconSize,
                                         onClick = { launchApp(context, app.pkg) },
                                         onLongClick = { moving = app }
