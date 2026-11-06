@@ -71,6 +71,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -404,6 +407,7 @@ fun SortedScreen(
                     var dragPkg by remember { mutableStateOf<String?>(null) }
                     var dragOffset by remember { mutableStateOf(Offset.Zero) }
                     var dragStart by remember { mutableStateOf(Offset.Zero) }
+                    val haptic = LocalHapticFeedback.current
                     val tileBounds = remember { mutableMapOf<String, Rect>() }
                     val latestPinned by rememberUpdatedState(pinned)
                     Column(
@@ -446,8 +450,31 @@ fun SortedScreen(
                                                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                                                         var total = Offset.Zero
                                                         var dragging = false
+                                                        var armed = false      // held 1 second: icon can now be moved
+                                                        var menuShown = false  // held 2 seconds: menu opened
+                                                        var cancelled = false  // finger moved before 1 second: just a scroll
+                                                        val t0 = System.currentTimeMillis()
                                                         while (true) {
-                                                            val ev = awaitPointerEvent(PointerEventPass.Initial)
+                                                            val elapsed = System.currentTimeMillis() - t0
+                                                            val wait = when {
+                                                                cancelled || dragging || menuShown -> 60_000L
+                                                                !armed -> (1000L - elapsed).coerceAtLeast(1L)
+                                                                else -> (2000L - elapsed).coerceAtLeast(1L)
+                                                            }
+                                                            val ev = withTimeoutOrNull(wait) { awaitPointerEvent(PointerEventPass.Initial) }
+                                                            if (ev == null) {
+                                                                if (!cancelled && !dragging && !menuShown) {
+                                                                    if (!armed) {
+                                                                        armed = true
+                                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                                    } else {
+                                                                        menuShown = true
+                                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                                        moving = app
+                                                                    }
+                                                                }
+                                                                continue
+                                                            }
                                                             val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                                                             if (!ch.pressed) {
                                                                 if (dragging) {
@@ -471,7 +498,9 @@ fun SortedScreen(
                                                             }
                                                             val d = ch.position - ch.previousPosition
                                                             total += d
-                                                            if (!dragging && total.getDistance() > viewConfiguration.touchSlop) {
+                                                            if (!armed && !cancelled && total.getDistance() > viewConfiguration.touchSlop) {
+                                                                cancelled = true
+                                                            } else if (armed && !dragging && !menuShown && total.getDistance() > viewConfiguration.touchSlop) {
                                                                 dragging = true
                                                                 dragPkg = app.pkg
                                                                 dragOffset = total
@@ -486,7 +515,7 @@ fun SortedScreen(
                                             },
                                         iconSize = favIconSize,
                                         onClick = { launchApp(context, app.pkg) },
-                                        onLongClick = { moving = app }
+                                        onLongClick = { }
                                     )
                                 }
                                 repeat(favColumns - rowApps.size) { Spacer(Modifier.weight(1f)) }
