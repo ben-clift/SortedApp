@@ -81,17 +81,37 @@ fun rememberNowPlaying(refreshKey: Int): State<NowPlaying?> {
         var controllers: List<MediaController> = emptyList()
         val callbacks = mutableMapOf<MediaController, MediaController.Callback>()
 
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var clearPending = false
+        val clearRunnable = Runnable {
+            clearPending = false
+            state.value = null
+        }
+
         fun recompute() {
             fun stateOf(c: MediaController) = c.playbackState?.state
-            val playing = controllers.firstOrNull {
-                stateOf(it) == PlaybackState.STATE_PLAYING || stateOf(it) == PlaybackState.STATE_BUFFERING
-            }
+            // "Active" includes the brief states apps pass through when you rewind, skip or jump
+            // to live. Treating those as "not playing" is what made the card vanish on a button press.
+            fun isActive(st: Int?) = st == PlaybackState.STATE_PLAYING ||
+                st == PlaybackState.STATE_BUFFERING ||
+                st == PlaybackState.STATE_CONNECTING ||
+                st == PlaybackState.STATE_FAST_FORWARDING ||
+                st == PlaybackState.STATE_REWINDING ||
+                st == PlaybackState.STATE_SKIPPING_TO_NEXT ||
+                st == PlaybackState.STATE_SKIPPING_TO_PREVIOUS ||
+                st == PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM
             // Only show something that is actually playing; paused or stopped hides the card.
-            val chosen = playing
+            val chosen = controllers.firstOrNull { isActive(stateOf(it)) }
             if (chosen == null) {
-                state.value = null
+                // A short blip between states shouldn't hide the card: clear only if it stays inactive.
+                if (state.value != null && !clearPending) {
+                    clearPending = true
+                    handler.postDelayed(clearRunnable, 1500L)
+                }
                 return
             }
+            handler.removeCallbacks(clearRunnable)
+            clearPending = false
             val md = chosen.metadata
             val title = md?.getString(MediaMetadata.METADATA_KEY_TITLE)
                 ?: md?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
@@ -113,8 +133,7 @@ fun rememberNowPlaying(refreshKey: Int): State<NowPlaying?> {
                 title = title.ifBlank { appName },
                 subtitle = if (title.isBlank()) "" else subtitle.ifBlank { appName },
                 art = art,
-                playing = stateOf(chosen) == PlaybackState.STATE_PLAYING ||
-                    stateOf(chosen) == PlaybackState.STATE_BUFFERING
+                playing = isActive(stateOf(chosen))
             )
         }
 
@@ -143,6 +162,7 @@ fun rememberNowPlaying(refreshKey: Int): State<NowPlaying?> {
         }
 
         onDispose {
+            handler.removeCallbacks(clearRunnable)
             runCatching { manager.removeOnActiveSessionsChangedListener(listener) }
             callbacks.forEach { (c, cb) -> runCatching { c.unregisterCallback(cb) } }
             callbacks.clear()
@@ -229,7 +249,7 @@ fun NowPlayingBar(np: NowPlaying, modifier: Modifier = Modifier, onDismiss: () -
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(Color.Black.copy(alpha = 0.62f))
-            // Swipe right (or left) to close the card; it comes back the next time something plays.
+            // Swipe left to close the card; it comes back the next time something plays.
             .pointerInput(np.controller.packageName) {
                 val distance = 90.dp.toPx()
                 awaitPointerEventScope {
@@ -245,7 +265,7 @@ fun NowPlayingBar(np: NowPlaying, modifier: Modifier = Modifier, onDismiss: () -
                             if (!ch.pressed) {
                                 if (horizontal) {
                                     ch.consume()
-                                    if (kotlin.math.abs(dx) >= distance) onDismiss()
+                                    if (dx <= -distance) onDismiss()
                                 }
                                 break
                             }
