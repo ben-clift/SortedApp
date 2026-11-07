@@ -27,6 +27,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -83,7 +86,8 @@ fun rememberNowPlaying(refreshKey: Int): State<NowPlaying?> {
             val playing = controllers.firstOrNull {
                 stateOf(it) == PlaybackState.STATE_PLAYING || stateOf(it) == PlaybackState.STATE_BUFFERING
             }
-            val chosen = playing ?: controllers.firstOrNull { stateOf(it) == PlaybackState.STATE_PAUSED }
+            // Only show something that is actually playing; paused or stopped hides the card.
+            val chosen = playing
             if (chosen == null) {
                 state.value = null
                 return
@@ -218,13 +222,44 @@ private fun openPlayingApp(context: android.content.Context, c: MediaController)
 
 /** A now-playing card: artwork and title on top, then start / back 20s / play-pause / forward 20s / live. */
 @Composable
-fun NowPlayingBar(np: NowPlaying, modifier: Modifier = Modifier) {
+fun NowPlayingBar(np: NowPlaying, modifier: Modifier = Modifier, onDismiss: () -> Unit = {}) {
     val context = LocalContext.current
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(Color.Black.copy(alpha = 0.62f))
+            // Swipe right (or left) to close the card; it comes back the next time something plays.
+            .pointerInput(np.controller.packageName) {
+                val distance = 90.dp.toPx()
+                awaitPointerEventScope {
+                    while (true) {
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        var dx = 0f
+                        var dy = 0f
+                        var horizontal = false
+                        var last = down.position
+                        while (true) {
+                            val ev = awaitPointerEvent(PointerEventPass.Initial)
+                            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!ch.pressed) {
+                                if (horizontal) {
+                                    ch.consume()
+                                    if (kotlin.math.abs(dx) >= distance) onDismiss()
+                                }
+                                break
+                            }
+                            dx += ch.position.x - last.x
+                            dy += ch.position.y - last.y
+                            last = ch.position
+                            if (!horizontal && kotlin.math.abs(dx) > viewConfiguration.touchSlop * 2 &&
+                                kotlin.math.abs(dx) > kotlin.math.abs(dy) * 2f
+                            ) horizontal = true
+                            if (horizontal) ch.consume()
+                        }
+                    }
+                }
+            }
             .clickable { openPlayingApp(context, np.controller) }
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {

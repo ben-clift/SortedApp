@@ -209,6 +209,10 @@ fun SortedScreen(
 
     // What is playing right now (needs Notification access; null until granted or when idle).
     val nowPlaying by rememberNowPlaying(refreshTick)
+    // Key of the card you swiped away; cleared once nothing is playing so the next song shows it again.
+    var dismissedKey by remember { mutableStateOf<String?>(null) }
+    val npKey = nowPlaying?.let { it.controller.packageName }
+    LaunchedEffect(npKey) { if (npKey == null) dismissedKey = null }
     val hasMediaAccess = remember(refreshTick) { hasNotificationAccess(context) }
 
     // This is a home screen: the back button never closes it, it only closes things on top.
@@ -304,10 +308,11 @@ fun SortedScreen(
             }
 
             // Now-playing bar at the very top of the page.
-            nowPlaying?.let { np ->
+            nowPlaying?.takeIf { it.controller.packageName != dismissedKey }?.let { np ->
                 item(key = "now-playing") {
                     NowPlayingBar(
                         np = np,
+                        onDismiss = { dismissedKey = np.controller.packageName },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                     )
                 }
