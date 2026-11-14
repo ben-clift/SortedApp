@@ -100,8 +100,10 @@ fun rememberNowPlaying(refreshKey: Int): State<NowPlaying?> {
                 st == PlaybackState.STATE_SKIPPING_TO_NEXT ||
                 st == PlaybackState.STATE_SKIPPING_TO_PREVIOUS ||
                 st == PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM
-            // Only show something that is actually playing; paused or stopped hides the card.
+            // Prefer something that is playing; otherwise keep showing a paused session so the
+            // card stays put (with a play button) when you press pause. Stopped/none still hides it.
             val chosen = controllers.firstOrNull { isActive(stateOf(it)) }
+                ?: controllers.firstOrNull { stateOf(it) == PlaybackState.STATE_PAUSED }
             if (chosen == null) {
                 // A short blip between states shouldn't hide the card: clear only if it stays inactive.
                 if (state.value != null && !clearPending) {
